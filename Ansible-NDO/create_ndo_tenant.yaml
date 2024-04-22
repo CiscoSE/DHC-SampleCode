@@ -1,0 +1,235 @@
+- name: PLAY 1 Add all the NDO Stuff
+  hosts: all
+  vars:
+  
+      ansible_connection: ansible.netcommon.httpapi
+      ansible_network_os: cisco.nd.nd
+      ansible_httpapi_use_ssl: True
+
+
+####
+# variables:
+# customerId = CustomerId
+# networkSubnet = Transfernet for Service Graph
+
+  tasks:
+
+  ### Login Fact
+   - set_fact:
+      ndo_login: &ndo_login
+        host: "{{ inventory_hostname }}"
+        username: "{{ lookup('env', 'ANSIBLE_NET_USERNAME') }}"
+        password: "{{ lookup('env', 'ANSIBLE_NET_PASSWORD') }}"
+        use_ssl: yes
+        validate_certs: no
+
+  ### Undeployment of Templates just to be sure - failure is ok
+   - name: UnDeploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       state: deploy
+     delegate_to: localhost
+     ignore_errors: yes
+     when: stateVar == "absent"
+
+   - name: UnDeploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       state: deploy
+     delegate_to: localhost
+     ignore_errors: yes
+     when: stateVar == "absent"
+
+
+#### Actual configuration
+   - name: Add a new tenant
+     cisco.mso.mso_tenant:
+       <<: *ndo_login
+       tenant: "DHC_NG_{{ customerId }}"
+       display_name: "DHC_NG_{{ customerId }}"
+       description: "Tenant for DHC_NG_{{ customerId }}"
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+
+
+
+
+
+
+   - name: Add a new template to a schema
+     cisco.mso.mso_schema_template:
+       <<: *ndo_login
+       tenant: "DHC_NG_{{ customerId }}"
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+
+
+   - name: Add a new template to a schema
+     cisco.mso.mso_schema_template:
+       <<: *ndo_login
+       tenant: "DHC_NG_{{ customerId }}"
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+   - name: Associate a non-cloud site with a tenant
+     cisco.mso.mso_tenant_site:
+       <<: *ndo_login
+       tenant: "DHC_NG_{{ customerId }}"
+       site: "DC1"
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+   - name: Add a new site to a schema
+     cisco.mso.mso_schema_site:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       site: "DC1"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+   - name: Add a new site to a schema
+     cisco.mso.mso_schema_site:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       site: "DC1"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+
+
+   - name: Add a new VRF
+     cisco.mso.mso_schema_template_vrf:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       vrf: "DHC_NG_{{ customerId }}_VRF"
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+   - name: Add a new filter entry
+     cisco.mso.mso_schema_template_filter_entry:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       filter: FLT
+       entry: ANY
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+   - name: Add a new contract filter
+     cisco.mso.mso_schema_template_contract_filter:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       contract: "ANY"
+       contract_scope: tenant
+       filter: FLT
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+
+
+
+   - name: Add a new contract filter
+     cisco.mso.mso_schema_template_contract_filter:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       contract: "PBR"
+       contract_scope: tenant
+       filter: FLT
+       state: "{{ stateVar }}"
+     delegate_to: localhost
+
+   - name: Add a new L3out
+     cisco.mso.mso_schema_template_l3out:
+       <<: *ndo_login
+       validate_certs: false
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       l3out: "DHC_NG_{{ customerId }}_L3OUT"
+       vrf:
+           name: "DHC_NG_{{ customerId }}_VRF"
+           schema: "DHC_NG_{{ customerId }}"
+           template: "SHARED_DHC_NG_{{ customerId }}"
+       state: present
+     delegate_to: localhost
+
+########### ServiceGraph BD######
+   - name: Add a new BD
+     cisco.mso.mso_schema_template_bd:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       bd: "ServiceGraph_BD"
+       vrf:
+         name: "DHC_NG_{{ customerId }}_VRF"
+         template: "SHARED_DHC_NG_{{ customerId }}"
+       state: present
+       layer2_stretch: false
+     delegate_to: localhost
+
+
+
+   - name: Add a new site BD
+     cisco.mso.mso_schema_site_bd:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       site: "DC1"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       bd: "ServiceGraph_BD"
+       state: present
+     delegate_to: localhost
+
+
+
+
+
+   - name: Add a new site BD subnet
+     cisco.mso.mso_schema_site_bd_subnet:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       site: "DC1"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       bd: "ServiceGraph_BD"
+       subnet: "{{ networkSubnet[1] | ipmath(2) }}/30"
+       scope: public
+       shared: yes
+       state: present
+     delegate_to: localhost
+     ignore_errors: true
+
+
+#### Deployment
+
+   - name: Deploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       state: deploy
+     delegate_to: localhost
+     ignore_errors: yes
+     when: stateVar == "present"
+
+   - name: Deploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       state: deploy
+     delegate_to: localhost
+     ignore_errors: yes
+     when: stateVar == "present"
