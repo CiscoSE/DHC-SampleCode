@@ -1,0 +1,97 @@
+
+
+- name: PLAY 1 Remove all the NDO Stuff
+  hosts: all
+ # connection: local
+  vars:
+  
+      ansible_connection: ansible.netcommon.httpapi
+      ansible_network_os: cisco.nd.nd
+      ansible_httpapi_use_ssl: True
+
+
+  tasks:
+   - set_fact:
+      ndo_login: &ndo_login
+        host: "{{ inventory_hostname }}"
+        username: "{{ lookup('env', 'ANSIBLE_NET_USERNAME') }}"
+        password: "{{ lookup('env', 'ANSIBLE_NET_PASSWORD') }}"
+        use_ssl: yes
+        validate_certs: no
+
+
+   - name: UnDeploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       state: undeploy
+       sites: DC1
+     delegate_to: localhost
+     ignore_errors: yes
+
+
+   - name: UnDeploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       state: undeploy
+       sites: DC1
+     delegate_to: localhost
+     ignore_errors: yes
+
+
+
+   - name: UnDeploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       state: undeploy
+       sites: DC1
+     delegate_to: localhost
+     ignore_errors: yes
+
+
+   - name: UnDeploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       state: undeploy
+       sites: DC1
+     delegate_to: localhost
+     ignore_errors: yes
+
+   - name: Remove a new template to a schema
+     cisco.mso.mso_schema:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       state: absent
+     delegate_to: localhost
+
+
+
+   - name: Remove a new tenant
+     cisco.mso.mso_tenant:
+       <<: *ndo_login
+       tenant: "DHC_NG_{{ customerId }}"
+       display_name: "DHC_NG_{{ customerId }}"
+       orchestrator_only: no
+       description: "Tenant for DHC_NG_{{ customerId }}"
+       state: absent
+     delegate_to: localhost 
+     
+
+
+
+
+
+
+
+
+
+
+
+
