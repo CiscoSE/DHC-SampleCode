@@ -1,0 +1,250 @@
+#Copyright (c) 2024 Cisco and/or its affiliates.
+#
+#This software is licensed to you under the terms of the Cisco Sample
+#Code License, Version 1.1 (the "License"). You may obtain a copy of the
+#License at
+#
+#               https://developer.cisco.com/docs/licenses
+#
+#All use of the material herein must be in accordance with the terms of
+#the License. All rights not expressly granted by the License are
+#reserved. Unless required by applicable law or agreed to separately in
+#writing, software distributed under the License is distributed on an "AS
+#IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+#or implied.
+
+
+
+
+### This playbook creates a new Network in a given customer tenant on NDO and creates the DHCP Relay policy in ACI
+
+- name: PLAY 1 Add all the NDO Stuff
+  hosts: NDO
+  connection: local
+  vars:
+  
+      ansible_connection: ansible.netcommon.httpapi
+      ansible_network_os: cisco.nd.nd
+      ansible_httpapi_use_ssl: True
+
+
+####
+# variables:
+# customerId = CustomerId
+# networkSubnet = Transfernet for Service Graph
+# dhcpServer = DHCP Server for Relay Policy
+# networkName = Name of the Network
+
+
+  tasks:
+   - set_fact:
+      ndo_login: &ndo_login
+        host: "{{ inventory_hostname }}"
+        username: "{{ lookup('env', 'ANSIBLE_NET_USERNAME') }}"
+        password: "{{ lookup('env', 'ANSIBLE_NET_PASSWORD') }}"
+        use_ssl: yes
+        validate_certs: no
+
+
+
+
+
+   - set_fact:
+        networkGateway: "{{ networkSubnet | ipmath(1) }}"
+
+   - set_fact:
+        networkCidr: "{{ networkSubnet | ansible.utils.ipaddr('prefix') }}"
+
+
+   - name: Add a new BD
+     cisco.mso.mso_schema_template_bd:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       bd: "{{ networkName }}_BD"
+       vrf:
+         name: "DHC_NG_{{ customerId }}_VRF"
+         template: "SHARED_DHC_NG_{{ customerId }}"
+       dhcp_policy:
+         name: "DHC_NG_{{ customerId }}_DHCPRELAY"
+         version: "1"       
+       state: present
+       layer2_stretch: false
+     delegate_to: localhost
+
+
+
+   - name: Add a new site BD
+     cisco.mso.mso_schema_site_bd:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       site: "DC1"
+       template: "DC1_DHC_NG_{{ customerId }}"
+
+       bd: "{{ networkName }}_BD"
+       state: present
+     delegate_to: localhost
+
+   - name: Add a new site BD l3out
+     cisco.mso.mso_schema_site_bd_l3out:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       site: "DC1"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       bd: "{{ networkName }}_BD"
+       l3out:
+         name: "DHC_NG_{{ customerId }}_L3OUT"
+       state: present
+     delegate_to: localhost
+
+
+
+   - name: Add a new site BD subnet
+     cisco.mso.mso_schema_site_bd_subnet:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       site: "DC1"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       bd: "{{ networkName }}_BD"
+       subnet: "{{ networkGateway }}/{{ networkCidr }}"
+       scope: public
+       shared: no
+       state: present
+     delegate_to: localhost
+     ignore_errors: true
+
+   - name: Add a new ANP
+     cisco.mso.mso_schema_template_anp:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       anp: "DHC_NG_{{ customerId }}_ANP"
+       state: present
+     delegate_to: localhost
+
+
+
+
+   - name: Add a new EPG
+     cisco.mso.mso_schema_template_anp_epg:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       anp: "DHC_NG_{{ customerId }}_ANP"
+       epg: "{{ networkName }}_EPG"
+       bd:
+        name: "{{ networkName }}_BD"
+       state: present
+     delegate_to: localhost
+
+
+   - name: Add a new domain to a site EPG
+     cisco.mso.mso_schema_site_anp_epg_domain:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       site: DC1
+       template: "DC1_DHC_NG_{{ customerId }}"
+       anp: "DHC_NG_{{ customerId }}_ANP"
+       epg: "{{ networkName  }}_EPG"
+       domain_association_type: vmmDomain
+       domain_profile: 'dc1_DVS'
+       deployment_immediacy: immediate
+       resolution_immediacy: pre-provision
+       state: present
+     delegate_to: localhost
+
+
+
+
+
+   - name: Add a contract to an EPG
+     cisco.mso.mso_schema_template_anp_epg_contract:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       anp: "DHC_NG_{{ customerId }}_ANP"
+       epg: "{{ networkName }}_EPG"
+       contract:
+         name: ANY
+         schema: "DHC_NG_{{ customerId }}"
+         template: "SHARED_DHC_NG_{{ customerId }}"
+         type: consumer
+       state: present
+     delegate_to: localhost
+
+
+
+
+
+   - name: Deploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "SHARED_DHC_NG_{{ customerId }}"
+       state: deploy
+     delegate_to: localhost
+     ignore_errors: yes
+     when: stateVar == "present"
+
+   - name: Deploy a schema template
+     cisco.mso.ndo_schema_template_deploy:
+       <<: *ndo_login
+       schema: "DHC_NG_{{ customerId }}"
+       template: "DC1_DHC_NG_{{ customerId }}"
+       state: deploy
+     delegate_to: localhost
+     ignore_errors: yes
+     when: stateVar == "present"
+
+
+
+- name: Play 1 Configure DHCP Relay
+  hosts: apic
+  gather_facts: no
+
+
+  tasks:
+
+
+### Login Stuff
+   - set_fact:
+      aci_login: &aci_login
+        host: "{{ inventory_hostname }}"
+        username: "{{ aciuser }}"
+        password: "{{ acipassword }}"
+        use_ssl: yes
+        validate_certs: no
+
+
+   - name: Add a new DHCP relay policy
+     cisco.aci.aci_dhcp_relay:
+       <<: *aci_login
+       tenant: "DHC_NG_{{ customerId }}"
+       name: "DHC_NG_{{ customerId }}_DHCPRELAY"
+       description: "DHC_NG_{{ customerId }}_DHCPRELAY"
+       state: present
+     delegate_to: localhost
+
+   - name: Add a new DHCP relay L3out provider
+     cisco.aci.aci_dhcp_relay_provider:
+       <<: *aci_login
+       tenant: "DHC_NG_{{ customerId }}"
+       provider_tenant: "DHC_NG_{{ customerId }}"
+       relay_policy: "DHC_NG_{{ customerId }}_DHCPRELAY"
+       epg_type: l3_external
+       l3out_name: "DHC_NG_{{ customerId }}_L3OUT"
+       external_net: any
+       dhcp_server_addr: "{{ dhcpServer }}"
+       state: present
+     delegate_to: localhost
+
+
+   - name: Create a new DHCP Relay Label to a Bridge Domain
+     cisco.aci.aci_bd_dhcp_label:
+       <<: *aci_login
+       tenant: "DHC_NG_{{ customerId }}"
+       bd: "{{ networkName }}_BD"
+       dhcp_label: "DHC_NG_{{ customerId }}_DHCPRELAY"
+       scope: tenant
+       state: present
+     delegate_to: localhost
